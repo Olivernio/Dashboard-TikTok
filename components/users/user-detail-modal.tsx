@@ -167,7 +167,7 @@ export function UserDetailModal({ userId, isOpen, onClose }: UserDetailModalProp
                           </div>
                           {donation.message && (
                             <p className="text-sm mt-2 text-muted-foreground">
-                              "{donation.message}"
+                              &ldquo;{donation.message}&rdquo;
                             </p>
                           )}
                           {donation.streams && (

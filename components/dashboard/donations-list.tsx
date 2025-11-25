@@ -108,7 +108,7 @@ export function DonationsList({ streamId }: DonationsListProps) {
                   </div>
                   {donation.message && (
                     <p className="mt-2 text-sm text-muted-foreground">
-                      "{donation.message}"
+                      &ldquo;{donation.message}&rdquo;
                     </p>
                   )}
                   <p className="mt-1 text-xs text-muted-foreground">
