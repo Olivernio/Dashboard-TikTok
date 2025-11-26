@@ -3,22 +3,42 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useQuery } from "@tanstack/react-query"
 import { Activity, Gift, Users, MessageSquare, TrendingUp, Video } from "lucide-react"
+import { ViewerCard } from "@/components/dashboard/viewer-card"
 
 interface StatsCardsProps {
   streamId?: string
+  streamerId?: string
 }
 
-export function StatsCards({ streamId }: StatsCardsProps) {
-  const { data: stats, isLoading } = useQuery({
-    queryKey: ["stats", streamId],
+export function StatsCards({ streamId, streamerId }: StatsCardsProps) {
+  // Obtener información del stream para determinar si está activo
+  const { data: stream } = useQuery({
+    queryKey: ["stream", streamId],
     queryFn: async () => {
-      const url = streamId
-        ? `/api/stats?stream_id=${streamId}`
-        : "/api/stats"
+      if (!streamId) return null
+      const res = await fetch(`/api/streams/${streamId}`)
+      if (!res.ok) return null
+      return res.json()
+    },
+    enabled: !!streamId,
+  })
+
+  const isActiveStream = stream?.is_active || stream?.ended_at === null
+
+  const { data: stats, isLoading } = useQuery({
+    queryKey: ["stats", streamId, streamerId],
+    queryFn: async () => {
+      let url = "/api/stats"
+      if (streamId) {
+        url = `/api/stats?stream_id=${streamId}`
+      } else if (streamerId) {
+        url = `/api/stats?streamer_id=${streamerId}`
+      }
       const res = await fetch(url)
       return res.json()
     },
-    refetchInterval: 5000,
+    // Solo hacer refetch automático si es stream activo o dashboard global
+    refetchInterval: (streamId && !isActiveStream) ? false : 5000,
   })
 
   if (isLoading) {
@@ -79,6 +99,7 @@ export function StatsCards({ streamId }: StatsCardsProps) {
 
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      {streamId && <ViewerCard streamId={streamId} />}
       {cards.map((card) => {
         const Icon = card.icon
         return (

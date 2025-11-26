@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
 
     let query = supabase
       .from("streams")
-      .select("*, streamers(*)")
+      .select("*")
       .order("started_at", { ascending: false })
 
     if (streamerId) {
@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
       query = query.is("ended_at", null)
     }
 
-    const { data, error } = await query
+    const { data: streams, error } = await query
 
     if (error) {
       return NextResponse.json(
@@ -29,7 +29,57 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    return NextResponse.json(data)
+    if (!streams || streams.length === 0) {
+      return NextResponse.json([])
+    }
+
+    // Separar streams principales (sin parent_stream_id) de las partes (con parent_stream_id)
+    const principalStreams = streams.filter((s: any) => !s.parent_stream_id)
+    const partStreams = streams.filter((s: any) => s.parent_stream_id)
+
+    // Crear un mapa de partes agrupadas por parent_stream_id
+    const partsMap = new Map<string, any[]>()
+    partStreams.forEach((part: any) => {
+      const parentId = part.parent_stream_id
+      if (!partsMap.has(parentId)) {
+        partsMap.set(parentId, [])
+      }
+      partsMap.get(parentId)!.push(part)
+    })
+
+    // Obtener streamers relacionados
+    const streamerIds = [...new Set(streams.map((s: any) => s.streamer_id).filter(Boolean))]
+    const streamersMap = new Map()
+    
+    if (streamerIds.length > 0) {
+      const { data: streamers } = await supabase
+        .from("streamers")
+        .select("*")
+        .in("id", streamerIds)
+      
+      streamers?.forEach((streamer: any) => streamersMap.set(streamer.id, streamer))
+    }
+
+    // Construir respuesta con streams principales y sus partes
+    const streamsWithParts = principalStreams.map((stream: any) => {
+      const parts = partsMap.get(stream.id) || []
+      // Ordenar partes por part_number
+      parts.sort((a: any, b: any) => (a.part_number || 1) - (b.part_number || 1))
+      
+      return {
+        ...stream,
+        is_active: stream.ended_at === null,
+        streamers: stream.streamer_id ? streamersMap.get(stream.streamer_id) || null : null,
+        parts: parts.map((part: any) => ({
+          ...part,
+          is_active: part.ended_at === null,
+          streamers: part.streamer_id ? streamersMap.get(part.streamer_id) || null : null,
+        })),
+        part_count: parts.length + 1, // +1 incluye el principal
+      }
+    })
+
+    return NextResponse.json(streamsWithParts)
   } catch (error) {
     console.error("Error fetching streams:", error)
     return NextResponse.json(
@@ -51,14 +101,21 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Limpiar valores undefined - convertir a null explícito
+    const cleanValue = (val: any) => val === undefined ? null : val
+    
+    const insertData: any = {
+      streamer_id,
+      started_at: new Date().toISOString(),
+    }
+    
+    // Solo incluir campos opcionales si están definidos
+    if (title !== undefined) insertData.title = cleanValue(title)
+    if (viewer_count !== undefined) insertData.viewer_count = cleanValue(viewer_count)
+
     const { data, error } = await supabase
       .from("streams")
-      .insert({
-        streamer_id,
-        title,
-        viewer_count,
-        started_at: new Date().toISOString(),
-      })
+      .insert(insertData)
       .select()
       .single()
 

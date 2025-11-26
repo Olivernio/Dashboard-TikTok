@@ -12,22 +12,41 @@ import { formatInTimeZone } from "date-fns-tz"
 
 interface DonationsListProps {
   streamId?: string
+  streamerId?: string
 }
 
-export function DonationsList({ streamId }: DonationsListProps) {
+export function DonationsList({ streamId, streamerId }: DonationsListProps) {
   const [searchTerm, setSearchTerm] = useState("")
   const timezone = useSettingsStore((state) => state.timezone)
 
-  const { data: donations, isLoading } = useQuery({
-    queryKey: ["donations", streamId],
+  // Obtener información del stream para determinar si está activo
+  const { data: stream } = useQuery({
+    queryKey: ["stream", streamId],
     queryFn: async () => {
-      const url = streamId
-        ? `/api/donations?stream_id=${streamId}`
-        : "/api/donations"
+      if (!streamId) return null
+      const res = await fetch(`/api/streams/${streamId}`)
+      if (!res.ok) return null
+      return res.json()
+    },
+    enabled: !!streamId,
+  })
+
+  const isActiveStream = stream?.is_active || stream?.ended_at === null
+
+  const { data: donations, isLoading } = useQuery({
+    queryKey: ["donations", streamId, streamerId],
+    queryFn: async () => {
+      let url = "/api/donations"
+      if (streamId) {
+        url = `/api/donations?stream_id=${streamId}`
+      } else if (streamerId) {
+        url = `/api/donations?streamer_id=${streamerId}`
+      }
       const res = await fetch(url)
       return res.json()
     },
-    refetchInterval: 5000,
+    // Solo hacer refetch automático si es stream activo o dashboard global
+    refetchInterval: (streamId && !isActiveStream) ? false : 5000,
   })
 
   const filteredDonations = donations?.filter((donation: any) => {
@@ -95,15 +114,35 @@ export function DonationsList({ streamId }: DonationsListProps) {
                         @{donation.users?.username || "unknown"}
                       </p>
                     </div>
-                    <div className="text-right">
-                      <p className="font-bold text-lg">
-                        {donation.gift_name} x{donation.gift_count}
-                      </p>
-                      {donation.gift_value && (
-                        <p className="text-sm text-muted-foreground">
-                          ${donation.gift_value.toFixed(2)}
-                        </p>
+                    <div className="text-right flex items-center gap-3">
+                      {donation.gift_image_url && (
+                        <img
+                          src={donation.gift_image_url}
+                          alt={donation.gift_name}
+                          className="w-12 h-12 object-contain rounded"
+                          onError={(e) => {
+                            // Ocultar imagen si falla al cargar
+                            e.currentTarget.style.display = 'none'
+                          }}
+                        />
                       )}
+                      <div>
+                        <p className="font-bold text-lg">
+                          {donation.gift_name} x{donation.gift_count}
+                        </p>
+                        <div className="flex flex-col items-end gap-1">
+                          {donation.tiktok_coins && (
+                            <p className="text-sm font-semibold text-yellow-500">
+                              💰 {donation.tiktok_coins.toLocaleString()} coins
+                            </p>
+                          )}
+                          {donation.gift_value && (
+                            <p className="text-sm text-muted-foreground">
+                              ${donation.gift_value.toFixed(2)}
+                            </p>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </div>
                   {donation.message && (

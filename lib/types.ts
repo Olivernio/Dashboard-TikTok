@@ -19,8 +19,16 @@ export interface Stream {
   total_events: number
   total_donations: number
   total_follows: number
+  parent_stream_id?: string | null
+  part_number?: number
   created_at: string
   updated_at: string
+  // Campos agregados por la API
+  is_active?: boolean
+  parts?: Stream[]
+  part_count?: number
+  parent_stream?: Stream
+  streamers?: Streamer
 }
 
 export interface User {
@@ -54,6 +62,8 @@ export interface Donation {
   gift_name: string
   gift_count: number
   gift_value: number | null
+  tiktok_coins: number | null
+  gift_image_url: string | null
   message: string | null
   created_at: string
 }

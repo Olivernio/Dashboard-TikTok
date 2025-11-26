@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { ThemeToggle } from "@/components/theme-toggle"
-import { Home, Video, Users, Settings, BarChart3 } from "lucide-react"
+import { Home, Video, Users, Settings, BarChart3, Wrench } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
@@ -12,6 +12,7 @@ const navigation = [
   { name: "Streams", href: "/dashboard/streams", icon: Video },
   { name: "Usuarios", href: "/dashboard/users", icon: Users },
   { name: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },
+  { name: "Admin", href: "/dashboard/admin", icon: Wrench },
   { name: "Configuración", href: "/dashboard/settings", icon: Settings },
 ]
 
@@ -53,7 +54,7 @@ export default function DashboardLayout({
           </div>
         </div>
       </nav>
-      <main>{children}</main>
+      <main className="h-[calc(100vh-4rem)]">{children}</main>
     </div>
   )
 }

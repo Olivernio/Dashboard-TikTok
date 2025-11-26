@@ -23,7 +23,7 @@ export async function GET(
     // Get user's events
     const { data: events } = await supabase
       .from("events")
-      .select("*, streams(*)")
+      .select("*")
       .eq("user_id", params.id)
       .order("created_at", { ascending: false })
       .limit(100)
@@ -31,7 +31,7 @@ export async function GET(
     // Get user's donations
     const { data: donations } = await supabase
       .from("donations")
-      .select("*, streams(*)")
+      .select("*")
       .eq("user_id", params.id)
       .order("created_at", { ascending: false })
       .limit(100)
@@ -44,10 +44,43 @@ export async function GET(
       .order("created_at", { ascending: false })
       .limit(100)
 
+    // Obtener streams relacionados manualmente
+    const streamIds = new Set<string>()
+    
+    events?.forEach((event: any) => {
+      if (event.stream_id) streamIds.add(event.stream_id)
+    })
+    
+    donations?.forEach((donation: any) => {
+      if (donation.stream_id) streamIds.add(donation.stream_id)
+    })
+
+    const streamsMap = new Map()
+    
+    if (streamIds.size > 0) {
+      const { data: streams } = await supabase
+        .from("streams")
+        .select("*")
+        .in("id", Array.from(streamIds))
+      
+      streams?.forEach((stream: any) => streamsMap.set(stream.id, stream))
+    }
+
+    // Combinar datos con streams relacionados
+    const eventsWithStreams = events?.map((event: any) => ({
+      ...event,
+      streams: event.stream_id ? streamsMap.get(event.stream_id) || null : null,
+    })) || []
+
+    const donationsWithStreams = donations?.map((donation: any) => ({
+      ...donation,
+      streams: donation.stream_id ? streamsMap.get(donation.stream_id) || null : null,
+    })) || []
+
     return NextResponse.json({
       ...user,
-      events: events || [],
-      donations: donations || [],
+      events: eventsWithStreams,
+      donations: donationsWithStreams,
       change_log: changeLog || [],
     })
   } catch (error) {

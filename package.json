@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "setup-db": "node scripts/setup-db.js",
+    "backup-db": "node scripts/backup-db.js",
+    "restore-db": "node scripts/restore-db.js"
   },
   "dependencies": {
     "@radix-ui/react-tabs": "^1.1.13",
@@ -19,6 +22,7 @@
     "lucide-react": "^0.309.0",
     "next": "^14.2.0",
     "next-themes": "^0.4.6",
+    "postgres": "^3.4.7",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
     "recharts": "^2.10.3",

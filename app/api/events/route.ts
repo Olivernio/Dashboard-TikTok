@@ -93,6 +93,8 @@ export async function POST(request: NextRequest) {
         gift_name: donationData.gift_name,
         gift_count: donationData.gift_count || 1,
         gift_value: donationData.gift_value || null,
+        tiktok_coins: donationData.tiktok_coins || null,
+        gift_image_url: donationData.gift_image_url || null,
         message: donationData.message || null,
       })
 
@@ -115,23 +117,69 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const streamId = searchParams.get("stream_id")
+    const streamerId = searchParams.get("streamer_id")
+    const userId = searchParams.get("user_id")
     const eventType = searchParams.get("event_type")
     const limit = parseInt(searchParams.get("limit") || "100")
     const groupBy = searchParams.get("group_by")
     const hours = parseInt(searchParams.get("hours") || "24")
+    const since = searchParams.get("since") // Para tiempo real: solo eventos desde este timestamp
+
+    // Si se especifica streamer_id, obtener todos los streams de ese streamer
+    let streamIds: string[] = []
+    if (streamerId && !streamId) {
+      const { data: streams, error: streamsError } = await supabase
+        .from("streams")
+        .select("id")
+        .eq("streamer_id", streamerId)
+      
+      if (streamsError) {
+        return NextResponse.json(
+          { error: "Failed to fetch streams", details: streamsError.message },
+          { status: 500 }
+        )
+      }
+      
+      streamIds = streams?.map(s => s.id) || []
+      if (streamIds.length === 0) {
+        // No hay streams para este streamer, retornar array vacío
+        return NextResponse.json([])
+      }
+    } else if (streamId) {
+      // Obtener el stream y sus partes si las tiene
+      const { data: streamData } = await supabase
+        .from("streams")
+        .select("id, parent_stream_id")
+        .eq("id", streamId)
+        .single()
+      
+      if (streamData) {
+        // Si el stream tiene parent_stream_id, usar el parent como principal
+        const principalStreamId = streamData.parent_stream_id || streamId
+        
+        // Obtener todas las partes del stream principal
+        const { data: parts } = await supabase
+          .from("streams")
+          .select("id")
+          .eq("parent_stream_id", principalStreamId)
+        
+        // Incluir el principal y todas sus partes
+        streamIds = [principalStreamId, ...(parts?.map(p => p.id) || [])]
+      } else {
+        streamIds = [streamId]
+      }
+    }
 
     if (groupBy === "hour") {
-      // Group events by hour for chart
-      const startDate = new Date()
-      startDate.setHours(startDate.getHours() - hours)
-
+      // Obtener eventos sin filtro de tiempo inicial (para detectar primera y última hora)
       let query = supabase
         .from("events")
         .select("event_type, created_at")
-        .gte("created_at", startDate.toISOString())
 
       if (streamId) {
         query = query.eq("stream_id", streamId)
+      } else if (streamIds.length > 0) {
+        query = query.in("stream_id", streamIds)
       }
 
       const { data: events, error } = await query
@@ -143,10 +191,61 @@ export async function GET(request: NextRequest) {
         )
       }
 
+      // Verificar si el stream está activo (antes de verificar eventos)
+      let isStreamActive = false
+      if (streamId) {
+        const { data: streamData } = await supabase
+          .from("streams")
+          .select("ended_at, is_active")
+          .eq("id", streamId)
+          .single()
+        
+        isStreamActive = streamData && (streamData.is_active || !streamData.ended_at)
+      }
+
+      // Si no hay eventos pero el stream está activo, mostrar al menos la hora actual
+      if (!events || events.length === 0) {
+        if (isStreamActive && streamId) {
+          // Stream activo sin eventos aún - mostrar hora actual
+          const now = new Date()
+          now.setMinutes(0, 0, 0)
+          const hourStr = now.toISOString().slice(0, 13) + ":00:00"
+          return NextResponse.json([{
+            hour: hourStr,
+            comments: 0,
+            donations: 0,
+            follows: 0,
+          }])
+        }
+        return NextResponse.json([])
+      }
+
+      // Encontrar primera y última hora con eventos
+      const eventDates = events.map(e => new Date(e.created_at))
+      const firstEvent = new Date(Math.min(...eventDates.map(d => d.getTime())))
+      let lastEvent = new Date(Math.max(...eventDates.map(d => d.getTime())))
+      
+      // Redondear a la hora más cercana
+      firstEvent.setMinutes(0, 0, 0)
+      lastEvent.setMinutes(0, 0, 0)
+      
+      // Si hay un stream activo, incluir la hora actual aunque no tenga eventos aún
+      // Esto permite que el gráfico se actualice en tiempo real
+      if (isStreamActive) {
+        // Stream está activo, incluir hora actual
+        const now = new Date()
+        now.setMinutes(0, 0, 0)
+        if (now >= lastEvent) {
+          lastEvent = new Date(now)
+        }
+      }
+      
+      lastEvent.setHours(lastEvent.getHours() + 1) // Incluir la última hora completa
+
       // Group by hour
       const grouped: Record<string, { comments: number; donations: number; follows: number }> = {}
       
-      events?.forEach((event) => {
+      events.forEach((event) => {
         const hour = new Date(event.created_at).toISOString().slice(0, 13) + ":00:00"
         if (!grouped[hour]) {
           grouped[hour] = { comments: 0, donations: 0, follows: 0 }
@@ -156,30 +255,52 @@ export async function GET(request: NextRequest) {
         if (event.event_type === "follow") grouped[hour].follows++
       })
 
-      const result = Object.entries(grouped).map(([hour, counts]) => ({
-        hour,
-        ...counts,
-      }))
+      // Generar todas las horas entre la primera y la última
+      const result: Array<{ hour: string; comments: number; donations: number; follows: number }> = []
+      const current = new Date(firstEvent)
+      
+      while (current <= lastEvent) {
+        const hourStr = current.toISOString().slice(0, 13) + ":00:00"
+        const hourData = grouped[hourStr] || { comments: 0, donations: 0, follows: 0 }
+        result.push({
+          hour: hourStr,
+          ...hourData,
+        })
+        current.setHours(current.getHours() + 1)
+      }
 
       return NextResponse.json(result.sort((a, b) => a.hour.localeCompare(b.hour)))
     }
 
-    // Regular query
+    // Regular query - sin relaciones anidadas por ahora
     let query = supabase
       .from("events")
-      .select("*, users(*), streams(*)")
+      .select("*")
       .order("created_at", { ascending: false })
       .limit(limit)
 
+    // Filtrar por stream_id o streamer_id (a través de stream_ids)
     if (streamId) {
       query = query.eq("stream_id", streamId)
+    } else if (streamIds.length > 0) {
+      query = query.in("stream_id", streamIds)
     }
 
     if (eventType) {
       query = query.eq("event_type", eventType)
     }
 
-    const { data, error } = await query
+    // Filtrar por user_id si se proporciona
+    if (userId) {
+      query = query.eq("user_id", userId)
+    }
+
+    // Si hay "since", solo obtener eventos más recientes (para tiempo real)
+    if (since) {
+      query = query.gte("created_at", since)
+    }
+
+    const { data: events, error } = await query
 
     if (error) {
       return NextResponse.json(
@@ -188,7 +309,45 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    return NextResponse.json(data)
+    // Si hay eventos, obtener usuarios y streams relacionados manualmente
+    if (events && events.length > 0) {
+      const userIds = [...new Set(events.map(e => e.user_id).filter(Boolean))]
+      const streamIds = [...new Set(events.map(e => e.stream_id).filter(Boolean))]
+
+      const usersMap = new Map()
+      const streamsMap = new Map()
+
+      // Obtener usuarios
+      if (userIds.length > 0) {
+        const { data: users } = await supabase
+          .from("users")
+          .select("*")
+          .in("id", userIds)
+        
+        users?.forEach(user => usersMap.set(user.id, user))
+      }
+
+      // Obtener streams
+      if (streamIds.length > 0) {
+        const { data: streams } = await supabase
+          .from("streams")
+          .select("*")
+          .in("id", streamIds)
+        
+        streams?.forEach(stream => streamsMap.set(stream.id, stream))
+      }
+
+      // Combinar datos
+      const eventsWithRelations = events.map(event => ({
+        ...event,
+        users: event.user_id ? usersMap.get(event.user_id) || null : null,
+        streams: event.stream_id ? streamsMap.get(event.stream_id) || null : null,
+      }))
+
+      return NextResponse.json(eventsWithRelations)
+    }
+
+    return NextResponse.json(events || [])
   } catch (error) {
     console.error("Error fetching events:", error)
     return NextResponse.json(

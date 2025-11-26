@@ -37,6 +37,28 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Limpiar valores undefined/null - convertir a null explícito o eliminar
+    const cleanValue = (val: any) => val === undefined ? null : val
+    
+    const updateData: any = {
+      display_name: cleanValue(display_name),
+      updated_at: new Date().toISOString(),
+    }
+    
+    // Solo incluir campos si tienen valor (no undefined)
+    if (profile_image_url !== undefined) updateData.profile_image_url = cleanValue(profile_image_url)
+    if (follower_count !== undefined) updateData.follower_count = cleanValue(follower_count)
+    if (following_count !== undefined) updateData.following_count = cleanValue(following_count)
+
+    const insertData: any = {
+      username,
+      display_name: cleanValue(display_name) || username,
+    }
+    
+    if (profile_image_url !== undefined) insertData.profile_image_url = cleanValue(profile_image_url)
+    if (follower_count !== undefined) insertData.follower_count = cleanValue(follower_count)
+    if (following_count !== undefined) insertData.following_count = cleanValue(following_count)
+
     // Check if streamer exists
     const { data: existing } = await supabase
       .from("streamers")
@@ -48,13 +70,7 @@ export async function POST(request: NextRequest) {
       // Update existing streamer
       const { data, error } = await supabase
         .from("streamers")
-        .update({
-          display_name,
-          profile_image_url,
-          follower_count,
-          following_count,
-          updated_at: new Date().toISOString(),
-        })
+        .update(updateData)
         .eq("id", existing.id)
         .select()
         .single()
@@ -71,13 +87,7 @@ export async function POST(request: NextRequest) {
       // Create new streamer
       const { data, error } = await supabase
         .from("streamers")
-        .insert({
-          username,
-          display_name,
-          profile_image_url,
-          follower_count,
-          following_count,
-        })
+        .insert(insertData)
         .select()
         .single()
 

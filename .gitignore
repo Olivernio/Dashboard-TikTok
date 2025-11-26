@@ -45,3 +45,6 @@ venv/
 env/
 ENV/
 
+# bot event queue
+bot_event_queue.json
+

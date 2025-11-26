@@ -71,21 +71,21 @@ export function UserDetailModal({ userId, isOpen, onClose }: UserDetailModalProp
             </h2>
             <p className="text-muted-foreground">@{userData.username}</p>
             <div className="flex items-center gap-4 mt-4 text-sm">
-              {userData.follower_count !== null && (
+              {userData.follower_count != null && typeof userData.follower_count === 'number' && (
                 <div className="flex items-center gap-1">
                   <Users className="h-4 w-4" />
                   <span className="font-semibold">{userData.follower_count.toLocaleString()}</span>
                   <span className="text-muted-foreground">seguidores</span>
                 </div>
               )}
-              {userData.following_count !== null && (
+              {userData.following_count != null && typeof userData.following_count === 'number' && (
                 <div className="flex items-center gap-1">
                   <Users className="h-4 w-4" />
                   <span className="font-semibold">{userData.following_count.toLocaleString()}</span>
                   <span className="text-muted-foreground">siguiendo</span>
                 </div>
               )}
-              {userData.is_following_streamer !== null && (
+              {userData.is_following_streamer !== null && userData.is_following_streamer !== undefined && (
                 <div className="flex items-center gap-1">
                   <TrendingUp className="h-4 w-4" />
                   <span className={userData.is_following_streamer ? "text-green-500" : "text-muted-foreground"}>
